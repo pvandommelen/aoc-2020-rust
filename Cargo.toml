@@ -1,0 +1,19 @@
+[package]
+name = "aoc-2020-rust"
+version = "0.1.0"
+authors = ["Peter van Dommelen <pvandommelen@users.noreply.github.com>"]
+edition = "2018"
+
+[[bin]]
+name = "day03-1"
+path = "src/day03/part1.rs"
+
+[[bin]]
+name = "day03-2"
+path = "src/day03/part2.rs"
+
+[[bin]]
+name = "day05"
+path = "src/day05/main.rs"
+
+[dependencies]
