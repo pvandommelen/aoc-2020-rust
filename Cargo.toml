@@ -24,9 +24,5 @@ path = "src/day06/main.rs"
 name = "day07"
 path = "src/day07/main.rs"
 
-[dependencies.regex]
-version = "^1.4.2"
-
 [dependencies.nom]
 version = "^6"
-features = ["regexp"]

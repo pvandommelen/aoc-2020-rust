@@ -7,7 +7,7 @@ use aoc_2020_rust::util::bench;
 #[macro_use]
 extern crate nom;
 
-use nom::{IResult, bytes::complete::{tag, take_while, take_while1}, character::is_alphabetic, character::{complete::{digit0, digit1, newline}, is_digit, is_space}, combinator::recognize, error::ParseError, multi::many1, number::complete::u8, regexp::bytes::{re_find, re_match}, sequence::{preceded, tuple}};
+use nom::{IResult, bytes::complete::{tag, take_while, take_while1}, character::is_alphabetic, character::{complete::{digit0, digit1, newline}, is_digit, is_space}, combinator::recognize, error::ParseError, multi::many1, number::complete::u8, sequence::{preceded, tuple}};
 use nom::combinator::{map, opt};
 use nom::branch::alt;
 
