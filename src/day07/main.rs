@@ -12,9 +12,9 @@ use nom::{IResult, bytes::complete::{tag, take_while}, character::is_alphabetic,
 use nom::combinator::{map, opt};
 use nom::branch::alt;
 #[derive(Debug, PartialEq)]
-pub struct BagStatement {
-    pub color: Box<[u8]>,
-    pub contents: Vec<(Box<[u8]>, u8)>,
+pub struct BagStatement<'a> {
+    pub color: &'a [u8],
+    pub contents: Vec<(&'a [u8], u8)>,
 }
 
 fn parse_color(input: &[u8]) -> nom::IResult<&[u8], &[u8]> {
@@ -55,7 +55,7 @@ fn parse_bag_statement(i: &[u8]) -> nom::IResult<&[u8], BagStatement> {
     }))
 }
 
-type PreparedInput = Vec<BagStatement>;
+type PreparedInput<'a> = Vec<BagStatement<'a>>;
 
 fn prepare_input(input: &str) -> PreparedInput {
     let i = input.as_bytes();
@@ -65,18 +65,18 @@ fn prepare_input(input: &str) -> PreparedInput {
     bag_statements
 }
 
-fn part1(input: &PreparedInput) -> u32 {
-    let mut stack: Vec<Box<[u8]>> = [ "shiny gold".as_bytes().into() ].iter().cloned().collect();
-    let mut full: HashSet<Box<[u8]>> = HashSet::new();
+fn part1<'a>(input: &'a PreparedInput) -> u32 {
+    let mut stack: Vec<&'a [u8]> = [ "shiny gold".as_bytes().into() ].iter().cloned().collect();
+    let mut full: HashSet<&'a [u8]> = HashSet::new();
 
     while let Some(color)=stack.pop() {
         // look for all bags that contain this color
         input.iter().for_each(|bag_statement| {
             bag_statement.contents.iter().for_each(|(contains_color, amount)| {
-                if *contains_color == color {
-                    if !full.contains(&bag_statement.color) {
-                        full.insert(bag_statement.color.clone());
-                        stack.push(bag_statement.color.clone());
+                if **contains_color == *color {
+                    if !full.contains(bag_statement.color) {
+                        full.insert(bag_statement.color);
+                        stack.push(bag_statement.color);
                     }
                 }
             });
