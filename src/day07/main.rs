@@ -89,8 +89,28 @@ fn part1<'a>(input: &'a PreparedInput) -> u32 {
     }
     full.len() as u32
 }
-fn part2(input: &PreparedInput) -> u32 {
-    0
+
+fn count_recursive<'a>(input: &'a PreparedInput, color: &[u8], counts: &mut HashMap<&'a [u8], u32>) -> u32 {
+    let current = input.iter().find(|bag_statement| {
+        bag_statement.color == color
+    }).expect("Bag not found");
+
+    let cache_entry = counts.get(current.color);
+    if let Some(count_value) = cache_entry {
+        *count_value
+    } else {
+        let count = current.contents.iter().fold(0, |sum, (content_color, amount)| -> u32 {
+            sum + (*amount as u32) * (count_recursive(input, content_color, counts) + 1)
+        });
+
+        counts.insert(current.color, count);
+        count
+    }
+}
+fn part2<'a>(input: &'a PreparedInput) -> u32 {
+    let mut counts: HashMap<&'a [u8], u32> = HashMap::new();
+    
+    count_recursive(input, "shiny gold".as_bytes(), &mut counts)
 }
 
 fn main() {
@@ -190,6 +210,20 @@ dotted black bags contain no other bags.";
     
     #[test]
     fn will_count_part2_example() {
-        assert_eq!(part2(&prepare_input(EXAMPLE_INPUT)), 0);
+        assert_eq!(part2(&prepare_input(EXAMPLE_INPUT)), 32);
+    }
+
+    const EXAMPLE_INPUT2: &str = 
+"shiny gold bags contain 2 dark red bags.
+dark red bags contain 2 dark orange bags.
+dark orange bags contain 2 dark yellow bags.
+dark yellow bags contain 2 dark green bags.
+dark green bags contain 2 dark blue bags.
+dark blue bags contain 2 dark violet bags.
+dark violet bags contain no other bags.";
+    
+    #[test]
+    fn will_count_part2_example2() {
+        assert_eq!(part2(&prepare_input(EXAMPLE_INPUT2)), 126);
     }
 }
