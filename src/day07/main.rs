@@ -6,11 +6,11 @@ use aoc_2020_rust::util::bench;
 
 #[macro_use]
 extern crate nom;
-extern crate regex;
 
-use nom::{IResult, bytes::complete::{tag, take_while}, character::is_alphabetic, character::{complete::{digit0, digit1, newline}, is_digit, is_space}, error::ParseError, multi::many1, number::complete::u8, regexp::bytes::{re_find, re_match}, sequence::preceded};
+use nom::{IResult, bytes::complete::{tag, take_while, take_while1}, character::is_alphabetic, character::{complete::{digit0, digit1, newline}, is_digit, is_space}, combinator::recognize, error::ParseError, multi::many1, number::complete::u8, regexp::bytes::{re_find, re_match}, sequence::{preceded, tuple}};
 use nom::combinator::{map, opt};
 use nom::branch::alt;
+
 #[derive(Debug, PartialEq)]
 pub struct BagStatement<'a> {
     pub color: &'a [u8],
@@ -18,8 +18,13 @@ pub struct BagStatement<'a> {
 }
 
 fn parse_color(input: &[u8]) -> nom::IResult<&[u8], &[u8]> {
-    let re = regex::bytes::Regex::new(r"^[a-z]+ [a-z]+").unwrap();
-    re_find(re)(input)
+    recognize(
+        tuple((
+            take_while1(is_alphabetic),
+            take_while1(is_space),
+            take_while1(is_alphabetic),
+        ))
+    )(input)
 }
 
 fn parse_amount(i: &[u8]) -> IResult<&[u8], u8> {
