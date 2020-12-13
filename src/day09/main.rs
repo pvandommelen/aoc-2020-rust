@@ -1,4 +1,4 @@
-use std::{collections::HashSet, fs};
+use std::{collections::{HashSet, VecDeque}, fs};
 use aoc_2020_rust::util::bench;
 use aoc_2020_rust::util::parser;
 
@@ -15,14 +15,13 @@ fn prepare_input(input: &str) -> Vec<u64> {
 
 fn part1(input: &Vec<u64>, preamble_len: usize) -> u64 {
     let mut working_set: HashSet<u64> = HashSet::new();
-    let mut working_vec: Vec<u64> = Vec::new();
-    let mut vec_position: usize = 0;
+    let mut working_vec: VecDeque<u64> = VecDeque::new();
 
     let found_nonexistent_sum = input.iter().find(|&&number| {
         assert!(!working_set.contains(&number));
 
         if working_vec.len() < preamble_len {
-            working_vec.insert(working_vec.len(), number);
+            working_vec.push_back(number);
             working_set.insert(number);
             false
         } else {
@@ -30,10 +29,10 @@ fn part1(input: &Vec<u64>, preamble_len: usize) -> u64 {
                 number > existing_number && working_set.contains(&(number - existing_number))
             }).is_some();
 
-            working_set.remove(&working_vec[vec_position]);
+            let popped = working_vec.pop_front().unwrap();
+            working_set.remove(&popped);
+            working_vec.push_back(number);
             working_set.insert(number);
-            working_vec[vec_position] = number;
-            vec_position = (vec_position + 1) % preamble_len;
             
             !sum_exists
         }
@@ -43,19 +42,17 @@ fn part1(input: &Vec<u64>, preamble_len: usize) -> u64 {
 fn part2(input: &Vec<u64>, preamble_len: usize) -> u64 {
     let expected_sum = part1(input, preamble_len);
 
-    let mut working_vec: Vec<u64> = Vec::new();
+    let mut working_vec: VecDeque<u64> = VecDeque::new();
+    let mut current_sum: u64 = 0;
 
     input.iter().find(|&&num| {
-        working_vec.insert(working_vec.len(), num);
-        let mut sum: u64;
-        loop {
-            sum = working_vec.iter().sum();
-            if sum <= expected_sum {
-                break;
-            }
-            working_vec.remove(0);
+        working_vec.push_back(num);
+        current_sum += num;
+        while current_sum > expected_sum {
+            let popped = working_vec.pop_front().unwrap();
+            current_sum -= popped;
         }
-        sum == expected_sum
+        current_sum == expected_sum
     });
 
     assert!(working_vec.len() > 1);
