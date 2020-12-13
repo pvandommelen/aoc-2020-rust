@@ -1,10 +1,10 @@
 use std::fs;
 use aoc_2020_rust::util::bench;
 
-type PreparedInput = str;
+type PreparedInput = String;
 
-fn prepare_input(input: &str) -> &PreparedInput {
-    input
+fn prepare_input(input: &str) -> PreparedInput {
+    input.to_owned()
 }
 
 fn part1(input: &PreparedInput) -> u32 {
@@ -33,12 +33,12 @@ mod tests {
 "";
     
     #[test]
-    fn will_count_part1_example() {
-        assert_eq!(part1(prepare_input(EXAMPLE_INPUT)), 0);
+    fn part1_example() {
+        assert_eq!(part1(&prepare_input(EXAMPLE_INPUT)), 0);
     }
     
     #[test]
-    fn will_count_part2_example() {
-        assert_eq!(part2(prepare_input(EXAMPLE_INPUT)), 0);
+    fn part2_example() {
+        assert_eq!(part2(&prepare_input(EXAMPLE_INPUT)), 0);
     }
 }
