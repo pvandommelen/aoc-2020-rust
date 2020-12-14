@@ -31,6 +31,11 @@ mod tests {
 
     const EXAMPLE_INPUT: &str = 
 "";
+
+    #[test]
+    fn parse_example() {
+        assert_eq!(prepare_input(EXAMPLE_INPUT), EXAMPLE_INPUT);
+    }
     
     #[test]
     fn part1_example() {
