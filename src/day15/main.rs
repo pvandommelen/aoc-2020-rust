@@ -2,29 +2,32 @@ use std::collections::HashMap;
 use aoc_2020_rust::util::bench;
 
 fn run(input: &Vec<u32>, number: usize) -> u32 {
+    const LIMIT: u32 = 1 << 22;
+
     let mut spoken_map = HashMap::new();
+    let mut spoken_vec: Vec<u32> = vec![std::u32::MAX; LIMIT as usize]; //u32::MAX represents not filled
     let mut last_value = input[0];
 
     (1..input.len()).for_each(|i| {
         let value = input[i];
-        spoken_map.insert(last_value, i);
+        spoken_vec[last_value as usize] = i as u32;
         last_value = value;
     });
 
-    (input.len()..number).for_each(|i| {
-        let last_spoken = spoken_map.get_key_value(&last_value);
-        let value = match last_spoken {
-            None => 0,
-            Some((_, &position)) => {
-                (i - position) as u32
+    (input.len()..number).fold(last_value, |last_value, i| {
+        if last_value < LIMIT {
+            let last_spoken = std::mem::replace(&mut spoken_vec[last_value as usize], i as u32);
+            if last_spoken == std::u32::MAX { 0 } else { i as u32 - last_spoken }
+        } else {
+            let last_spoken = spoken_map.insert(last_value, i);
+            match last_spoken {
+                None => 0,
+                Some(position) => {
+                    (i - position) as u32
+                },
             }
-        };
-        spoken_map.insert(last_value, i);
-
-        last_value = value;
-    });
-    
-    last_value
+        }
+    })
 }
 
 fn main() {
