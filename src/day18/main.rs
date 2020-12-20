@@ -1,3 +1,5 @@
+#![feature(test)]
+
 use std::fs;
 use aoc_2020_rust::util::{bench, parser::parse_decimal_u64};
 use nom::IResult;
@@ -22,76 +24,72 @@ fn parse_expression1(i: &[u8]) -> IResult<&[u8], u64> {
         ))(i)
     }
 
-    map(tuple((
-        parse_single_expression,
-        many0(tuple((
-            alt((
-                value(Operation::ADDITION, tag(" + ")),
-                value(Operation::MULTIPLICATION, tag(" * "))
-            )),
+    let (i, a) = parse_single_expression(i)?;
+
+    fold_many0(
+        tuple((
+            delimited(
+                char(' '), 
+                alt((
+                    value(Operation::ADDITION, char('+')),
+                    value(Operation::MULTIPLICATION, char('*'))
+                )), 
+                char(' ')
+            ),
             parse_single_expression
-        )))
-    )), |(a, b)| {
-        b.iter().fold(a, |aggregate, (operation, value)| {
+        )),
+        a,
+        |aggregate, (operation, value)| {
             match operation {
                 Operation::ADDITION => aggregate + value,
                 Operation::MULTIPLICATION => aggregate * value,
             }
-        })
-    })(i)
+        }
+    )(i)
 }
 
 fn part1(input: &str) -> u64 {
-    let vec = all_consuming(
-        many1(terminated(
-            parse_expression1,
-            opt(newline)
-        ))
-    )(input.as_bytes()).expect("Parsing failed").1;
-
-    vec.iter().sum()
+    input.lines().map(|line| {
+        parse_expression1(line.as_bytes()).unwrap().1
+    }).sum()
 }
 
 fn parse_expression2(i: &[u8]) -> IResult<&[u8], u64> {
     fn parse_inner_expression(i: &[u8]) -> IResult<&[u8], u64> {
-        map(tuple((
+        fn parse_single_expression(i: &[u8]) -> IResult<&[u8], u64> {
             alt((
                 delimited(char('('), parse_expression2, char(')')),
                 parse_decimal_u64
-            )),
-            many0(preceded(
-                tag(" + "),
-                parse_inner_expression
-            ))
-        )), |(a, b)| {
-            b.iter().fold(a, |aggregate, value| {
-                aggregate + value
-            })
-        })(i)
-    }
+            ))(i)
+        }
 
-    map(tuple((
-        parse_inner_expression,
-        many0(preceded(
+        let (i, a) = parse_single_expression(i)?;
+        fold_many0(
+            preceded(
+                tag(" + "),
+                parse_single_expression
+            ), 
+            a, 
+            |a, b| {
+                a + b
+            }
+        )(i)
+    }
+    
+    let (i, a) = parse_inner_expression(i)?;
+    fold_many0(
+        preceded(
             tag(" * "),
             parse_inner_expression
-        ))
-    )), |(a, b)| {
-        b.iter().fold(a, |aggregate, value| {
-            aggregate * value
-        })
+        ), a, |a, b| {
+        a * b
     })(i)
 }
 
 fn part2(input: &str) -> u64 {
-    let vec = all_consuming(
-        many1(terminated(
-            parse_expression2,
-            opt(newline)
-        ))
-    )(input.as_bytes()).expect("Parsing failed").1;
-
-    vec.iter().sum()
+    input.lines().map(|line| {
+        parse_expression2(line.as_bytes()).unwrap().1
+    }).sum()
 }
 
 fn main() {
