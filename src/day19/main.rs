@@ -2,15 +2,12 @@ use std::{collections::HashMap, fs};
 use aoc_2020_rust::util::bench;
 use nom::{IResult, branch::alt, bytes::complete::tag, character::complete::{alpha1, char, digit1}, combinator::{all_consuming, map}, multi::separated_list1, sequence::delimited};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct State<'a> {
-    remaining: &'a str,
-}
+type State<'a, 'b> = Box<dyn Iterator<Item = &'a str> + 'b>;
 
 type Rules = HashMap<u64, Box<dyn Parser>>;
 
 trait Parser: ParserClone {
-    fn consume<'a>(&self, rules: &Rules, state: &State<'a>) -> Result<State<'a>, ()>;
+    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b>;
 }
 trait ParserClone {
     fn clone_box(&self) -> Box<dyn Parser>;
@@ -33,17 +30,20 @@ struct And {
     definitions: Vec<Box<dyn Parser>>,
 }
 impl Parser for And {
-    fn consume<'a>(&self, rules: &Rules, state: &State<'a>) -> Result<State<'a>, ()> {
-        let mut iterator = self.definitions.iter();
-        let mut current_state: State<'a> = state.to_owned();
-        while let Some(definition) = iterator.next() {
-            let inner_result: Result<State<'a>, ()> = definition.consume(rules, &current_state);
-            if inner_result.is_err() {
-                return inner_result;
+    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
+
+        fn recurse<'a, 'b>(rules: &'b Rules, definitions: &[Box<dyn Parser>], previous: Vec<&'a str>) -> Vec<&'a str> {
+            if definitions.len() == 0 {
+                return previous;
             }
-            current_state = inner_result.unwrap();
+
+            let definition = &definitions[0];
+
+            previous.into_iter().flat_map(|i| {
+                recurse(rules, &definitions[1..definitions.len()], definition.consume(rules, i).collect())
+            }).collect()
         }
-        Ok(current_state)
+        Box::new(recurse(rules, &self.definitions, vec![remaining]).into_iter())
     }
 }
 
@@ -52,15 +52,10 @@ struct Or {
     definitions: Vec<Box<dyn Parser>>,
 }
 impl Parser for Or {
-    fn consume<'a>(&self, rules: &Rules, state: &State<'a>) -> Result<State<'a>, ()> {
-        let mut iterator = self.definitions.iter();
-        while let Some(definition) = iterator.next() {
-            let inner_result = definition.consume(rules, &state);
-            if inner_result.is_ok() {
-                return inner_result;
-            }
-        }
-        Err(())
+    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
+        Box::new(self.definitions.iter().flat_map(move |definition| {
+            definition.consume(rules, remaining)
+        }))
     }
 }
 
@@ -69,22 +64,20 @@ struct Reference {
     index: u64,
 }
 impl Parser for Reference {
-    fn consume<'a>(&self, rules: &Rules, state: &State<'a>) -> Result<State<'a>, ()> {
-        rules[&self.index].consume(rules, state)
+    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
+        rules[&self.index].consume(rules, remaining)
     }
 
 }
 
 impl Parser for String {
-    fn consume<'a>(&self, _rules: &Rules, state: &State<'a>) -> Result<State<'a>, ()> {
-        if state.remaining.starts_with(self) {
-            let (_, remainder) = state.remaining.split_at(self.len());
-            Ok(State {
-                remaining: remainder,
-            })
-        } else {
-            Err(())
-        }
+    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
+        Box::new((vec![remaining]).into_iter().filter(move |s| {
+            s.starts_with(self)
+        }).map(move |s| {
+            let (_, remainder) = s.split_at(self.len());
+            remainder
+        }))
     }
 }
 
@@ -145,20 +138,21 @@ fn prepare_input<'a>(input: &'a str) -> Input<'a> {
     )
 }
 
+fn run(rules: &Rules, messages: &Vec<&str>) -> u64 {
+    messages.iter().filter(|&&message| {
+        let mut result = rules.get(&0).unwrap().consume(rules, message);
+
+        result.find(|r| {
+            r.len() == 0
+        }).is_some().to_owned()
+    }).count() as u64
+}
+
 fn part1(input: &Input) -> u64 {
     let rules = &input.0;
     let messages = &input.1;
 
-    messages.iter().filter(|message| {
-        let result = rules.get(&0).unwrap().consume(rules, &State {
-            remaining: message,
-        });
-
-        match result {
-            Ok(state) => state.remaining.len() == 0,
-            _ => false,
-        }
-    }).count() as u64
+    run(rules, messages)
 }
 
 fn part2(input: &Input) -> u64 {
@@ -193,49 +187,8 @@ fn part2(input: &Input) -> u64 {
             }),
         ]
     }));
-    // updated_rules.insert(8, Box::new(Or {
-    //     definitions: vec![
-    //         Box::new(Reference { index: 42 }),
-    //         Box::new(And {
-    //             definitions: vec![
-    //                 Box::new(Reference { index: 42 }),
-    //                 Box::new(Reference { index: 8 }),
-    //             ],
-    //         }),
-    //     ]
-    // }));
-    // updated_rules.insert(11, Box::new(Or {
-    //     definitions: vec![
-    //         Box::new(And {
-    //             definitions: vec![
-    //                 Box::new(Reference { index: 42 }),
-    //                 Box::new(Reference { index: 31 }),
-    //             ],
-    //         }),
-    //         Box::new(And {
-    //             definitions: vec![
-    //                 Box::new(Reference { index: 42 }),
-    //                 Box::new(Reference { index: 11 }),
-    //                 Box::new(Reference { index: 31 }),
-    //             ],
-    //         }),
-    //     ]
-    // }));
 
-    messages.iter().filter(|message| {
-        let result = rules.get(&0).unwrap().consume(&updated_rules, &State {
-            remaining: message,
-        });
-
-
-        match result {
-            Ok(state) => {
-                println!("{}", state.remaining.len());
-                state.remaining.len() == 0
-            },
-            _ => false,
-        }
-    }).count() as u64
+    run(&updated_rules, messages)
 }
 
 fn main() {
@@ -255,16 +208,19 @@ mod tests {
     
     #[test]
     fn test_parsing() {
-        let rules = HashMap::new();
-        let state = State { remaining: "ab" };
-        assert_eq!("a".to_owned().consume(&rules, &state), Ok(State{remaining: "b"}));
-        assert_eq!("".to_owned().consume(&rules, &state), Ok(State{remaining: "ab"}));
+        fn parse<'a, 'b>(parser: &'b dyn Parser, i: &'a str) -> Vec<&'a str> {
+            let rules: Rules = HashMap::new();
+            parser.consume(&rules, i).collect()
+        }
 
-        assert_eq!(Or{definitions:vec![Box::new("a".to_owned())]}.consume(&rules, &state), Ok(State{remaining: "b"}));
-        assert_eq!(Or{definitions:vec![Box::new("b".to_owned()), Box::new("a".to_owned())]}.consume(&rules, &state), Ok(State{remaining: "b"}));
+        assert_eq!(parse(&"a".to_owned(), "ab"), vec!["b"]);
+        assert_eq!(parse(&"".to_owned(), "ab"), vec!["ab"]);
 
-        assert_eq!(And{definitions:vec![Box::new("a".to_owned())]}.consume(&rules, &state), Ok(State{remaining: "b"}));
-        assert_eq!(And{definitions:vec![Box::new("a".to_owned()), Box::new("b".to_owned())]}.consume(&rules, &state), Ok(State{remaining: ""}));
+        assert_eq!(parse(&Or{definitions:vec![Box::new("a".to_owned())]}, "ab"), vec!["b"]);
+        assert_eq!(parse(&Or{definitions:vec![Box::new("b".to_owned()), Box::new("a".to_owned())]}, "ab"), vec!["b"]);
+
+        assert_eq!(parse(&And{definitions:vec![Box::new("a".to_owned())]}, "ab"), vec!["b"]);
+        assert_eq!(parse(&And{definitions:vec![Box::new("a".to_owned()), Box::new("b".to_owned())]}, "ab"), vec![""]);
     }
     #[test]
     fn part1_example1() {
