@@ -1,90 +1,66 @@
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, iter::{empty, once}};
 use aoc_2020_rust::util::bench;
 use nom::{IResult, branch::alt, bytes::complete::tag, character::complete::{alpha1, char, digit1}, combinator::{all_consuming, map}, multi::separated_list1, sequence::delimited};
 
-type State<'a, 'b> = Box<dyn Iterator<Item = &'a str> + 'b>;
+type BoxedIterator<'a, 'b> = Box<dyn Iterator<Item = &'a str> + 'b>;
 
-type Rules = HashMap<u64, Box<dyn Parser>>;
-
-trait Parser: ParserClone {
-    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b>;
-}
-trait ParserClone {
-    fn clone_box(&self) -> Box<dyn Parser>;
-}
-
-impl<T: 'static + Parser + Clone> ParserClone for T {
-    fn clone_box(&self) -> Box<dyn Parser> {
-        Box::new(self.clone())
-    }
-}
-
-impl Clone for Box<dyn Parser> {
-    fn clone(&self) -> Box<dyn Parser> {
-        self.clone_box()
-    }
-}
+type Rules = HashMap<u64, Parser>;
 
 #[derive(Clone)]
-struct And {
-    definitions: Vec<Box<dyn Parser>>,
+enum Parser {
+    And {
+        definitions: Vec<Parser>,
+    },
+    Or {
+        definitions: Vec<Parser>,
+    },
+    Reference {
+        index: u64,
+    },
+    String {
+        string: String,
+    },
 }
-impl Parser for And {
-    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
-
-        fn recurse<'a, 'b>(rules: &'b Rules, definitions: &[Box<dyn Parser>], previous: Vec<&'a str>) -> Vec<&'a str> {
-            if definitions.len() == 0 {
-                return previous;
-            }
-
-            let definition = &definitions[0];
-
-            previous.into_iter().flat_map(|i| {
-                recurse(rules, &definitions[1..definitions.len()], definition.consume(rules, i).collect())
-            }).collect()
+impl Parser {
+    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> BoxedIterator<'a, 'b> {
+        match self {
+            Self::And {definitions} => {
+                fn recurse<'a: 'b, 'b>(rules: &'b Rules, definitions: &'b [Parser], remaining: &'a str) -> BoxedIterator<'a, 'b> {
+                    if definitions.len() == 0 {
+                        return Box::new(once(remaining));
+                    }
+        
+                    let definition = &definitions[0];
+                    Box::new(definition.consume(rules, remaining).flat_map(move |i| {
+                        recurse(rules, &definitions[1..definitions.len()], i)
+                    }))
+                }
+                recurse(rules, definitions, remaining)
+            },
+            Self::Or {definitions} => {
+                Box::new(definitions.iter().flat_map(move |definition| {
+                    definition.consume(rules, remaining)
+                }))
+            },
+            Self::Reference {index} => {
+                rules[index].consume(rules, remaining)
+            },
+            Self::String {string} => {
+                if remaining.starts_with(string) {
+                    let (_, remainder) = remaining.split_at(string.len());
+                    Box::new(once(remainder))
+                } else {
+                    Box::new(empty())
+                }
+            },
         }
-        Box::new(recurse(rules, &self.definitions, vec![remaining]).into_iter())
-    }
-}
-
-#[derive(Clone)]
-struct Or {
-    definitions: Vec<Box<dyn Parser>>,
-}
-impl Parser for Or {
-    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
-        Box::new(self.definitions.iter().flat_map(move |definition| {
-            definition.consume(rules, remaining)
-        }))
-    }
-}
-
-#[derive(Clone)]
-struct Reference {
-    index: u64,
-}
-impl Parser for Reference {
-    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
-        rules[&self.index].consume(rules, remaining)
-    }
-
-}
-
-impl Parser for String {
-    fn consume<'a: 'b, 'b>(&'b self, rules: &'b Rules, remaining: &'a str) -> State<'a, 'b> {
-        Box::new((vec![remaining]).into_iter().filter(move |s| {
-            s.starts_with(self)
-        }).map(move |s| {
-            let (_, remainder) = s.split_at(self.len());
-            remainder
-        }))
     }
 }
 
 type Input<'a> = (Rules, Vec<&'a str>);
 
-fn parse_rule(i: &str) -> Box<dyn Parser> {
-    fn inner_parse_rule(i: &str) -> IResult<&str, Box<dyn Parser>> {
+fn parse_rule(i: &str) -> Parser {
+    fn inner_parse_rule(i: &str) -> IResult<&str, Parser> {
         map(separated_list1(
             tag(" | "),
             map(separated_list1(
@@ -92,25 +68,33 @@ fn parse_rule(i: &str) -> Box<dyn Parser> {
                 alt((
                     map(
                         delimited(char('"'), alpha1, char('"')),
-                        |char: &str| -> Box<dyn Parser> {
-                            Box::new(char.to_owned())
+                        |char: &str| -> Parser {
+                            Parser::String { 
+                                string: char.to_owned()
+                            }
                         }
                     ),
-                    map(digit1, |a: &str| -> Box<dyn Parser> {
-                        Box::new(Reference {
+                    map(digit1, |a: &str| -> Parser {
+                        Parser::Reference {
                             index: a.parse().unwrap(),
-                        })
+                        }
                     }),
                 ))
-            ), |parts| -> Box<dyn Parser> {
-                Box::new(And {
+            ), |parts| -> Parser {
+                if parts.len() == 1 {
+                    return parts.into_iter().next().unwrap().into();
+                }
+                Parser::And {
                     definitions: parts,
-                })
+                }
             })
-        ), |parts| -> Box<dyn Parser> {
-            Box::new(Or {
+        ), |parts| -> Parser {
+            if parts.len() == 1 {
+                return parts.into_iter().next().unwrap().into();
+            }
+            Parser::Or {
                 definitions: parts,
-            })
+            }
         })(i)
     }
     all_consuming(inner_parse_rule)(i).unwrap().1
@@ -160,33 +144,33 @@ fn part2(input: &Input) -> u64 {
     let messages = &input.1;
 
     let mut updated_rules = (*rules).clone();
-    updated_rules.insert(8, Box::new(And {
+    updated_rules.insert(8, Parser::And{
         definitions: vec![
-            Box::new(Reference { index: 42 }),
-            Box::new(Or {
+            Parser::Reference { index: 42 },
+            Parser::Or {
                 definitions: vec![
-                    Box::new(Reference { index: 8 }),
-                    Box::new("".to_owned()),
+                    Parser::Reference { index: 8 },
+                    Parser::String { string: "".to_owned() },
                 ],
-            }),
+            },
         ]
-    }));
-    updated_rules.insert(11, Box::new(And {
+    });
+    updated_rules.insert(11, Parser::And{
         definitions: vec![
-            Box::new(Reference { index: 42 }),
-            Box::new(Or {
+            Parser::Reference { index: 42 },
+            Parser::Or {
                 definitions: vec![
-                    Box::new(And {
+                    Parser::And{
                         definitions: vec![
-                            Box::new(Reference { index: 11 }),
-                            Box::new(Reference { index: 31 }),
+                            Parser::Reference { index: 11 },
+                            Parser::Reference { index: 31 },
                         ],
-                    }),
-                    Box::new(Reference { index: 31 }),
+                    },
+                    Parser::Reference { index: 31 },
                 ],
-            }),
+            },
         ]
-    }));
+    });
 
     run(&updated_rules, messages)
 }
@@ -208,19 +192,19 @@ mod tests {
     
     #[test]
     fn test_parsing() {
-        fn parse<'a, 'b>(parser: &'b dyn Parser, i: &'a str) -> Vec<&'a str> {
+        fn parse<'a, 'b>(parser: &'b Parser, i: &'a str) -> Vec<&'a str> {
             let rules: Rules = HashMap::new();
             parser.consume(&rules, i).collect()
         }
 
-        assert_eq!(parse(&"a".to_owned(), "ab"), vec!["b"]);
-        assert_eq!(parse(&"".to_owned(), "ab"), vec!["ab"]);
+        assert_eq!(parse(&Parser::String{ string: "a".to_owned() }, "ab"), vec!["b"]);
+        assert_eq!(parse(&Parser::String{ string: "".to_owned() }, "ab"), vec!["ab"]);
 
-        assert_eq!(parse(&Or{definitions:vec![Box::new("a".to_owned())]}, "ab"), vec!["b"]);
-        assert_eq!(parse(&Or{definitions:vec![Box::new("b".to_owned()), Box::new("a".to_owned())]}, "ab"), vec!["b"]);
+        assert_eq!(parse(&Parser::Or{definitions:vec![Parser::String{ string: "a".to_owned() }]}, "ab"), vec!["b"]);
+        assert_eq!(parse(&Parser::Or{definitions:vec![Parser::String{ string: "b".to_owned() }, Parser::String{ string: "a".to_owned() }]}, "ab"), vec!["b"]);
 
-        assert_eq!(parse(&And{definitions:vec![Box::new("a".to_owned())]}, "ab"), vec!["b"]);
-        assert_eq!(parse(&And{definitions:vec![Box::new("a".to_owned()), Box::new("b".to_owned())]}, "ab"), vec![""]);
+        assert_eq!(parse(&Parser::And{definitions:vec![Parser::String{ string: "a".to_owned() }]}, "ab"), vec!["b"]);
+        assert_eq!(parse(&Parser::And{definitions:vec![Parser::String{ string: "a".to_owned() }, Parser::String{ string: "b".to_owned() }]}, "ab"), vec![""]);
     }
     #[test]
     fn part1_example1() {
